@@ -92,6 +92,9 @@ class OverlayWindow(QWidget):
         # In-app shortcut to toggle listening (cmd+shift+space)
         QShortcut(QKeySequence("Ctrl+Shift+Space"), self, activated=self.toggle_listening)
         QShortcut(QKeySequence("Meta+Shift+Space"), self, activated=self.toggle_listening)
+        self.space_shortcut = QShortcut(QKeySequence("Space"), self, activated=self.toggle_listening)
+        self.space_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.space_shortcut.setAutoRepeat(False)
 
     # ---------- UI ----------
     def _build_ui(self) -> None:
