@@ -1,0 +1,9 @@
+PyQt6>=6.6
+sounddevice>=0.4.6
+numpy>=1.26
+pywhispercpp>=1.2.0
+requests>=2.31
+pynput>=1.7.6
+truststore>=0.9
+pyobjc-framework-Cocoa>=10.0 ; sys_platform == "darwin"
+
