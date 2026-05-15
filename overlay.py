@@ -85,7 +85,7 @@ class OverlayWindow(QWidget):
         self._win_cfg = get_window_config(getattr(settings, "platform_mode", "auto"))
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(440, 480)
+        self._apply_visual_settings()
         self._place_top_right()
         self._apply_window_prefs()
 
@@ -167,7 +167,6 @@ class OverlayWindow(QWidget):
         self.transcript = QTextEdit()
         self.transcript.setReadOnly(True)
         self.transcript.setObjectName("transcript")
-        self.transcript.setFixedHeight(80)
         blay.addWidget(self.transcript)
 
         # Answer label
@@ -196,45 +195,67 @@ class OverlayWindow(QWidget):
         root.addWidget(header)
         root.addWidget(body, 1)
 
+        self._apply_visual_settings()
+
+    def _overlay_font_size(self) -> int:
+        return max(12, min(20, int(getattr(self.settings, "font_size", 15))))
+
+    def _overlay_dimensions(self) -> tuple[int, int]:
+        width = max(440, min(900, int(getattr(self.settings, "window_width", 520))))
+        height = max(480, min(900, int(getattr(self.settings, "window_height", 620))))
+        return width, height
+
+    def _apply_visual_settings(self) -> None:
+        font_size = self._overlay_font_size()
+        width, height = self._overlay_dimensions()
+        base_label_size = max(12, font_size - 2)
+        section_size = max(11, font_size - 3)
+        combo_height = max(22, font_size + 11)
+        transcript_height = max(90, font_size * 7)
+
+        self.resize(width, height)
+        if hasattr(self, "transcript"):
+            self.transcript.setFixedHeight(transcript_height)
+
         self.setStyleSheet(
-            """
-            #header {
+            f"""
+            #header {{
                 background: rgba(22, 24, 30, 235);
                 border-top-left-radius: 12px;
                 border-top-right-radius: 12px;
-            }
-            #body {
+            }}
+            #body {{
                 background: rgba(22, 24, 30, 225);
                 border-bottom-left-radius: 12px;
                 border-bottom-right-radius: 12px;
-            }
-            QLabel { color: #e6e6e6; font-size: 12px; }
-            #title { font-weight: 600; }
-            #section { color: #9aa0a6; font-size: 11px; text-transform: uppercase;
-                       letter-spacing: 0.6px; margin-top: 2px; }
-            #dot_idle { color: #5f6368; font-size: 14px; }
-            #dot_listening { color: #34d399; font-size: 14px; }
-            #dot_thinking { color: #fbbf24; font-size: 14px; }
-            #dot_error { color: #f87171; font-size: 14px; }
-            QTextEdit#transcript, QTextEdit#answer {
+            }}
+            QLabel {{ color: #e6e6e6; font-size: {base_label_size}px; }}
+            #title {{ font-weight: 600; }}
+            #section {{ color: #9aa0a6; font-size: {section_size}px; text-transform: uppercase;
+                       letter-spacing: 0.6px; margin-top: 2px; }}
+            #dot_idle {{ color: #5f6368; font-size: 14px; }}
+            #dot_listening {{ color: #34d399; font-size: 14px; }}
+            #dot_thinking {{ color: #fbbf24; font-size: 14px; }}
+            #dot_error {{ color: #f87171; font-size: 14px; }}
+            QTextEdit#transcript, QTextEdit#answer {{
                 background: rgba(255,255,255,0.04);
                 color: #f3f4f6;
                 border: 1px solid rgba(255,255,255,0.07);
                 border-radius: 8px;
-                font-size: 13px;
+                font-size: {font_size}px;
                 padding: 8px;
-            }
-            QTextEdit#answer { font-size: 13.5px; line-height: 1.45; }
-            QComboBox {
+            }}
+            QTextEdit#answer {{ font-size: {font_size}px; line-height: 1.5; }}
+            QComboBox {{
                 background: #2b2f3a;
                 color: #f3f4f6;
                 border: 1px solid rgba(255,255,255,0.12);
                 border-radius: 6px;
                 padding: 4px 8px;
-                min-height: 22px;
-            }
-            QComboBox:hover { border: 1px solid rgba(255,255,255,0.25); }
-            QComboBox QAbstractItemView {
+                min-height: {combo_height}px;
+            }}
+            QComboBox:hover {{ border: 1px solid rgba(255,255,255,0.25); }}
+            QComboBox QAbstractItemView {{
                 background: #20242e;
                 color: #f3f4f6;
                 border: 1px solid rgba(255,255,255,0.15);
@@ -243,39 +264,39 @@ class OverlayWindow(QWidget):
                 outline: none;
                 selection-background-color: #2563eb;
                 selection-color: #ffffff;
-            }
-            QComboBox QAbstractItemView::item {
+            }}
+            QComboBox QAbstractItemView::item {{
                 color: #f3f4f6;
                 background: transparent;
                 padding: 5px 8px;
                 min-height: 20px;
-            }
-            QComboBox QAbstractItemView::item:selected {
+            }}
+            QComboBox QAbstractItemView::item:selected {{
                 background: #2563eb;
                 color: #ffffff;
-            }
-            QPushButton#listen {
+            }}
+            QPushButton#listen {{
                 background: #2563eb; color: white; border: none;
-                border-radius: 6px; padding: 5px 14px; font-weight: 600;
-            }
-            QPushButton#listen:checked { background: #dc2626; }
-            QPushButton#iconbtn {
+                border-radius: 6px; padding: 6px 16px; font-weight: 600;
+            }}
+            QPushButton#listen:checked {{ background: #dc2626; }}
+            QPushButton#iconbtn {{
                 background: transparent; color: #d1d5db; border: none;
                 font-size: 14px;
-            }
-            QPushButton#iconbtn:hover { color: white; }
-            QPushButton#quit {
+            }}
+            QPushButton#iconbtn:hover {{ color: white; }}
+            QPushButton#quit {{
                 background: rgba(220,38,38,0.18); color: #fca5a5;
                 border: 1px solid rgba(220,38,38,0.45);
                 border-radius: 6px; padding: 4px 16px; font-weight: 600;
-            }
-            QPushButton#quit:hover { background: #dc2626; color: white; }
-            QPushButton#ghostbtn {
+            }}
+            QPushButton#quit:hover {{ background: #dc2626; color: white; }}
+            QPushButton#ghostbtn {{
                 background: transparent; color: #9aa0a6;
                 border: 1px solid rgba(255,255,255,0.12);
                 border-radius: 6px; padding: 4px 12px;
-            }
-            QPushButton#ghostbtn:hover { color: #f3f4f6; border-color: rgba(255,255,255,0.3); }
+            }}
+            QPushButton#ghostbtn:hover {{ color: #f3f4f6; border-color: rgba(255,255,255,0.3); }}
             """
         )
 
@@ -506,6 +527,7 @@ class OverlayWindow(QWidget):
             if new.whisper_model != self._transcriber.model_name:
                 self._transcriber = Transcriber(model_name=new.whisper_model)
             self._refresh_devices()
+            self._apply_visual_settings()
             self._apply_window_prefs()
             QMessageBox.information(self, "Saved", "Settings saved.")
 

@@ -27,6 +27,9 @@ from platform_config import PLATFORM_MODES
 
 SETTINGS_DIR = Path.home() / ".diycopilot"
 SETTINGS_PATH = SETTINGS_DIR / "settings.json"
+DEFAULT_FONT_SIZE = 15
+DEFAULT_WINDOW_WIDTH = 520
+DEFAULT_WINDOW_HEIGHT = 620
 
 
 @dataclass
@@ -41,6 +44,9 @@ class Settings:
     style: str = "bullets_then_full"  # bullets_then_full | bullets | full
     always_on_top: bool = True
     opacity: int = 100  # window opacity percentage, 40–100
+    font_size: int = DEFAULT_FONT_SIZE
+    window_width: int = DEFAULT_WINDOW_WIDTH
+    window_height: int = DEFAULT_WINDOW_HEIGHT
     platform_mode: str = "auto"  # auto | macos | windows | linux
 
     @classmethod
@@ -235,6 +241,51 @@ class SettingsDialog(QDialog):
         _orl.addWidget(self.opacity_slider, 1)
         _orl.addWidget(self.opacity_value)
 
+        self.font_size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.font_size_slider.setRange(12, 20)
+        self.font_size_slider.setValue(max(12, min(20, settings.font_size)))
+        self.font_size_value = QLabel(f"{self.font_size_slider.value()}px")
+        self.font_size_value.setObjectName("opacityValue")
+        self.font_size_slider.valueChanged.connect(
+            lambda v: self.font_size_value.setText(f"{v}px")
+        )
+        self._font_size_row = QWidget()
+        _fsl = QHBoxLayout(self._font_size_row)
+        _fsl.setContentsMargins(0, 0, 0, 0)
+        _fsl.setSpacing(10)
+        _fsl.addWidget(self.font_size_slider, 1)
+        _fsl.addWidget(self.font_size_value)
+
+        self.window_width_slider = QSlider(Qt.Orientation.Horizontal)
+        self.window_width_slider.setRange(440, 900)
+        self.window_width_slider.setValue(max(440, min(900, settings.window_width)))
+        self.window_width_value = QLabel(f"{self.window_width_slider.value()}px")
+        self.window_width_value.setObjectName("opacityValue")
+        self.window_width_slider.valueChanged.connect(
+            lambda v: self.window_width_value.setText(f"{v}px")
+        )
+        self._window_width_row = QWidget()
+        _wwl = QHBoxLayout(self._window_width_row)
+        _wwl.setContentsMargins(0, 0, 0, 0)
+        _wwl.setSpacing(10)
+        _wwl.addWidget(self.window_width_slider, 1)
+        _wwl.addWidget(self.window_width_value)
+
+        self.window_height_slider = QSlider(Qt.Orientation.Horizontal)
+        self.window_height_slider.setRange(480, 900)
+        self.window_height_slider.setValue(max(480, min(900, settings.window_height)))
+        self.window_height_value = QLabel(f"{self.window_height_slider.value()}px")
+        self.window_height_value.setObjectName("opacityValue")
+        self.window_height_slider.valueChanged.connect(
+            lambda v: self.window_height_value.setText(f"{v}px")
+        )
+        self._window_height_row = QWidget()
+        _whl = QHBoxLayout(self._window_height_row)
+        _whl.setContentsMargins(0, 0, 0, 0)
+        _whl.setSpacing(10)
+        _whl.addWidget(self.window_height_slider, 1)
+        _whl.addWidget(self.window_height_value)
+
         # ---- header ----
         header = QWidget()
         header.setObjectName("dlgHeader")
@@ -321,6 +372,21 @@ class SettingsDialog(QDialog):
             "keep an eye on what's behind it.",
             self._opacity_row,
         )
+        self._add_field(
+            window_card, "Font size",
+            "Controls the transcript and answer text size in the overlay.",
+            self._font_size_row,
+        )
+        self._add_field(
+            window_card, "Window width",
+            "Sets the default width of the overlay window.",
+            self._window_width_row,
+        )
+        self._add_field(
+            window_card, "Window height",
+            "Sets the default height of the overlay window.",
+            self._window_height_row,
+        )
         cl.addWidget(window_card)
         cl.addStretch(1)
 
@@ -395,5 +461,8 @@ class SettingsDialog(QDialog):
             style=self.style_combo.currentData() or "bullets_then_full",
             always_on_top=self.aot_check.isChecked(),
             opacity=self.opacity_slider.value(),
+            font_size=self.font_size_slider.value(),
+            window_width=self.window_width_slider.value(),
+            window_height=self.window_height_slider.value(),
             platform_mode=self.platform_combo.currentData() or "auto",
         )
