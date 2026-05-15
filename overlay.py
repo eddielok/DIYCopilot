@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import re
 import threading
+from pathlib import Path
 from typing import Optional
+
+# The folder this app lives in — used so user-facing instructions point at the
+# real location instead of a hardcoded path.
+APP_DIR = Path(__file__).resolve().parent
 
 import numpy as np
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QObject
@@ -370,7 +375,7 @@ class OverlayWindow(QWidget):
                 f"⚠ Whisper model '{self._transcriber.model_name}' isn't "
                 f"downloaded yet.\n\n"
                 f"In Terminal, run this once (it's resumable):\n\n"
-                f"    cd ~/Documents/claude/DIYCopilot\n"
+                f'    cd "{APP_DIR}"\n'
                 f"    source .venv/bin/activate\n"
                 f"    python download_model.py {self._transcriber.model_name}\n\n"
                 f"Then press Listen again."

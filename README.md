@@ -69,11 +69,14 @@ Auto-detect).
 **Requires Python 3.10 or newer** (pywhispercpp uses 3.10+ syntax). Check with
 `python3 --version` (or `py --version` on Windows).
 
+All commands below assume you've `cd`'d into the project folder first (the
+folder that contains `main.py`) — wherever you keep it.
+
 **macOS**
 
 ```bash
-cd ~/Documents/claude/DIYCopilot
-python3.12 -m venv .venv          # brew install python@3.12 if needed
+cd /path/to/DIYCopilot              # the folder containing main.py
+python3.12 -m venv .venv            # brew install python@3.12 if needed
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -84,8 +87,8 @@ Needs the Xcode command-line tools for the whisper.cpp build:
 **Windows** (PowerShell)
 
 ```powershell
-cd $HOME\Documents\claude\DIYCopilot
-py -3.12 -m venv .venv            # install Python 3.12 from python.org if needed
+cd C:\path\to\DIYCopilot            # the folder containing main.py
+py -3.12 -m venv .venv              # install Python 3.12 from python.org if needed
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
@@ -96,8 +99,8 @@ workload from the Visual Studio Build Tools, then retry.
 **Linux**
 
 ```bash
-cd ~/Documents/claude/DIYCopilot
-python3.12 -m venv .venv          # sudo apt install python3.12-venv if needed
+cd /path/to/DIYCopilot              # the folder containing main.py
+python3.12 -m venv .venv            # sudo apt install python3.12-venv if needed
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
