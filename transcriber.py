@@ -93,11 +93,34 @@ class Transcriber:
                 print_progress=False,
             )
 
-    def transcribe(self, audio: np.ndarray) -> str:
-        """Transcribe a float32 16 kHz mono numpy array into plain text."""
+    def prewarm(self) -> None:
+        """Load the model in a background thread so the first real
+        transcription doesn't pay cold-start latency."""
+        if self._model is not None or not self.is_ready():
+            return
+
+        def _go() -> None:
+            try:
+                self._ensure_loaded()
+            except Exception:
+                pass  # surfaced again on first real transcribe call
+
+        threading.Thread(target=_go, name="WhisperPrewarm", daemon=True).start()
+
+    def transcribe(self, audio: np.ndarray, initial_prompt: str = "") -> str:
+        """Transcribe a float32 16 kHz mono numpy array into plain text.
+
+        ``initial_prompt`` biases Whisper toward specific words/names — handy
+        for company names, product names, or your interviewer's name so they
+        come back spelled correctly.
+        """
         if audio.size == 0:
             return ""
         self._ensure_loaded()
         assert self._model is not None
-        segments = self._model.transcribe(audio.astype(np.float32), language="en")
+        kwargs: dict = {"language": "en"}
+        if initial_prompt:
+            # Trim to a reasonable size; Whisper's prompt window is ~224 tokens.
+            kwargs["initial_prompt"] = initial_prompt[:800]
+        segments = self._model.transcribe(audio.astype(np.float32), **kwargs)
         return " ".join(seg.text.strip() for seg in segments).strip()

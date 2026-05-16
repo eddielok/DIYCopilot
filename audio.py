@@ -25,8 +25,10 @@ BLOCK_SIZE = int(SAMPLE_RATE * BLOCK_SECS)
 # tuning knobs
 SILENCE_RMS = 0.008          # below this => silence
 MIN_VOICED_SECS = 0.4        # ignore micro-noises
-END_OF_UTT_SILENCE = 1.0     # seconds of trailing silence => utterance ends
+DEFAULT_END_OF_UTT_SILENCE = 0.7  # default trailing silence => utterance ends
 MAX_UTTERANCE_SECS = 25.0    # hard cap
+PREROLL_BLOCKS = 6           # 6 * 50ms = 300ms — kept before voice triggers
+                             # so we don't clip the first word
 
 
 def list_input_devices() -> list[str]:
@@ -79,10 +81,12 @@ class AudioCapture:
         device: str,
         on_utterance: Callable[[np.ndarray], None],
         on_error: Optional[Callable[[str], None]] = None,
+        end_of_utt_silence: float = DEFAULT_END_OF_UTT_SILENCE,
     ):
         self.device = device
         self.on_utterance = on_utterance
         self.on_error = on_error or (lambda _msg: None)
+        self.end_of_utt_silence = end_of_utt_silence
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -107,6 +111,7 @@ class AudioCapture:
     def _run(self) -> None:
         device_index = _resolve_device(self.device) if self.device else None
         buffer: list[np.ndarray] = []
+        preroll: list[np.ndarray] = []  # last few blocks of silence/quiet audio
         voiced_secs = 0.0
         silence_secs = 0.0
         in_utterance = False
@@ -148,11 +153,12 @@ class AudioCapture:
 
                         total_secs = (voiced_secs + silence_secs)
                         if (
-                            silence_secs >= END_OF_UTT_SILENCE
+                            silence_secs >= self.end_of_utt_silence
                             and voiced_secs >= MIN_VOICED_SECS
                         ) or total_secs >= MAX_UTTERANCE_SECS:
                             audio = np.concatenate(buffer) if buffer else np.zeros(0, dtype=np.float32)
                             buffer = []
+                            preroll = []
                             voiced_secs = 0.0
                             silence_secs = 0.0
                             in_utterance = False
@@ -161,9 +167,17 @@ class AudioCapture:
                             except Exception as exc:  # don't kill the thread
                                 self.on_error(f"on_utterance error: {exc}")
                     else:
+                        # Always retain a rolling pre-roll buffer of the most
+                        # recent few blocks; when voice triggers, prepend them
+                        # to the utterance so the very first phoneme isn't
+                        # cut off.
+                        preroll.append(block)
+                        if len(preroll) > PREROLL_BLOCKS:
+                            preroll.pop(0)
                         if is_voice:
                             in_utterance = True
-                            buffer = [block]
+                            buffer = list(preroll)
+                            preroll = []
                             voiced_secs = BLOCK_SECS
                             silence_secs = 0.0
         except Exception as exc:

@@ -41,6 +41,14 @@ INTERROGATIVE_CUES = re.compile(
 )
 
 
+def _strip_section_marker(text: str) -> str:
+    """Drop the leading 'BULLETS:' header the model emits so it's not shown."""
+    t = text.lstrip()
+    if t.upper().startswith("BULLETS:"):
+        t = t[len("BULLETS:"):]
+    return t.lstrip()
+
+
 def looks_like_question(text: str) -> bool:
     t = text.strip()
     if not t:
@@ -71,8 +79,19 @@ class OverlayWindow(QWidget):
         self._drag_offset: Optional[QPoint] = None
         self._capture: Optional[AudioCapture] = None
         self._transcriber = Transcriber(model_name=settings.whisper_model)
+        # Load the Whisper model in the background so the first transcription
+        # doesn't pay cold-start latency.
+        self._transcriber.prewarm()
         self._llm_stop = threading.Event()
         self._listening = False
+        # Cumulative streamed text — re-routed into bullets/answer panes on each
+        # delta by splitting on the "FULL ANSWER:" marker the system prompt
+        # tells the model to emit.
+        self._stream_buffer = ""
+        # Once the model writes the FULL ANSWER marker, the bullets section is
+        # final. We stop re-writing that pane after that point so the user can
+        # freely scroll it while the full answer keeps streaming below.
+        self._bullets_finalized = False
 
         self._build_ui()
         self._wire_bridge()
@@ -169,14 +188,28 @@ class OverlayWindow(QWidget):
         self.transcript.setObjectName("transcript")
         blay.addWidget(self.transcript)
 
-        # Answer label
-        a_label = QLabel("Answer")
+        # Bullets pane — short, easy-to-glance points to rephrase live
+        b_label = QLabel("Bullets")
+        b_label.setObjectName("section")
+        blay.addWidget(b_label)
+        self.bullets_pane = QTextEdit()
+        self.bullets_pane.setReadOnly(False)
+        self.bullets_pane.setObjectName("bullets")
+        self.bullets_pane.setFixedHeight(210)
+        blay.addWidget(self.bullets_pane)
+
+        # Full answer pane — the longer scripted answer underneath
+        a_label = QLabel("Full Answer")
         a_label.setObjectName("section")
         blay.addWidget(a_label)
-        self.answer = QTextEdit()
-        self.answer.setReadOnly(False)  # let user copy/edit
-        self.answer.setObjectName("answer")
-        blay.addWidget(self.answer, 1)
+        self.answer_pane = QTextEdit()
+        self.answer_pane.setReadOnly(False)  # let user copy/edit
+        self.answer_pane.setObjectName("answer")
+        blay.addWidget(self.answer_pane, 1)
+
+        # Back-compat alias so existing code that writes to self.answer (e.g.
+        # error / model-missing messages) lands in the main answer pane.
+        self.answer = self.answer_pane
 
         # Footer row — clear + quit
         footer = QHBoxLayout()
@@ -213,6 +246,18 @@ class OverlayWindow(QWidget):
         combo_height = max(22, font_size + 11)
         transcript_height = max(90, font_size * 7)
 
+        # Opacity affects ONLY panel backgrounds — text stays fully opaque.
+        # opacity_pct in [40..100]; scale the original panel alphas by it.
+        opacity_pct = max(40, min(100, getattr(self.settings, "opacity", 100)))
+        scale = opacity_pct / 100
+        header_alpha = int(235 * scale)
+        body_alpha = int(225 * scale)
+        pane_white_alpha = max(0.02, 0.04 * scale)
+        bullets_blue_alpha = max(0.04, 0.10 * scale)
+        bullets_border_alpha = max(0.10, 0.30 * scale)
+
+        text_color = getattr(self.settings, "text_color", "#ffffff") or "#ffffff"
+
         self.resize(width, height)
         if hasattr(self, "transcript"):
             self.transcript.setFixedHeight(transcript_height)
@@ -220,16 +265,16 @@ class OverlayWindow(QWidget):
         self.setStyleSheet(
             f"""
             #header {{
-                background: rgba(22, 24, 30, 235);
+                background: rgba(22, 24, 30, {header_alpha});
                 border-top-left-radius: 12px;
                 border-top-right-radius: 12px;
             }}
             #body {{
-                background: rgba(22, 24, 30, 225);
+                background: rgba(22, 24, 30, {body_alpha});
                 border-bottom-left-radius: 12px;
                 border-bottom-right-radius: 12px;
             }}
-            QLabel {{ color: #e6e6e6; font-size: {base_label_size}px; }}
+            QLabel {{ color: {text_color}; font-size: {base_label_size}px; }}
             #title {{ font-weight: 600; }}
             #section {{ color: #9aa0a6; font-size: {section_size}px; text-transform: uppercase;
                        letter-spacing: 0.6px; margin-top: 2px; }}
@@ -237,15 +282,23 @@ class OverlayWindow(QWidget):
             #dot_listening {{ color: #34d399; font-size: 14px; }}
             #dot_thinking {{ color: #fbbf24; font-size: 14px; }}
             #dot_error {{ color: #f87171; font-size: 14px; }}
-            QTextEdit#transcript, QTextEdit#answer {{
-                background: rgba(255,255,255,0.04);
-                color: #f3f4f6;
+            QTextEdit#transcript, QTextEdit#answer, QTextEdit#bullets {{
+                background: rgba(255,255,255,{pane_white_alpha:.3f});
+                color: {text_color};
                 border: 1px solid rgba(255,255,255,0.07);
                 border-radius: 8px;
                 font-size: {font_size}px;
                 padding: 8px;
             }}
             QTextEdit#answer {{ font-size: {font_size}px; line-height: 1.5; }}
+            QTextEdit#bullets {{
+                background: rgba(37, 99, 235, {bullets_blue_alpha:.3f});
+                border: 1px solid rgba(37, 99, 235, {bullets_border_alpha:.3f});
+                color: {text_color};
+                font-size: {font_size}px;
+                font-weight: 500;
+                line-height: 1.5;
+            }}
             QComboBox {{
                 background: #2b2f3a;
                 color: #f3f4f6;
@@ -331,8 +384,11 @@ class OverlayWindow(QWidget):
         # Toggling these flags detaches/reattaches the window, so we re-show after.
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, on_top)
         self.setWindowFlag(Qt.WindowType.Tool, self._win_cfg.use_tool_flag)
-        opacity_pct = getattr(self.settings, "opacity", 100)
-        self.setWindowOpacity(max(0.4, min(1.0, opacity_pct / 100)))
+        # Opacity now lives in the stylesheet (panel-bg alpha), so the text
+        # stays fully opaque. The window itself is at 100% — only the dark
+        # panel backgrounds fade. Make sure that's the case.
+        self.setWindowOpacity(1.0)
+        self._apply_visual_settings()
         if was_visible:
             self.show()
             # Re-show recreated the native window — re-apply native tweaks.
@@ -410,10 +466,12 @@ class OverlayWindow(QWidget):
         device = self.source_combo.currentText()
         if device.startswith("("):
             device = ""
+        silence_secs = max(0.3, min(1.5, self.settings.silence_ms / 1000))
         self._capture = AudioCapture(
             device=device,
             on_utterance=self._on_utterance_worker,
             on_error=lambda msg: self.bridge.error.emit(msg),
+            end_of_utt_silence=silence_secs,
         )
         self._capture.start()
         self._listening = True
@@ -435,7 +493,10 @@ class OverlayWindow(QWidget):
     def _on_utterance_worker(self, audio: np.ndarray) -> None:
         """Runs in the audio thread. Transcribe, then maybe answer."""
         try:
-            text = self._transcriber.transcribe(audio)
+            text = self._transcriber.transcribe(
+                audio,
+                initial_prompt=getattr(self.settings, "whisper_prompt", ""),
+            )
         except Exception as exc:
             self.bridge.error.emit(f"Transcription failed: {exc}")
             return
@@ -476,14 +537,60 @@ class OverlayWindow(QWidget):
         self.transcript.setPlainText(text)
 
     def _on_answer_started(self) -> None:
-        self.answer.clear()
+        self.bullets_pane.clear()
+        self.answer_pane.clear()
+        self._stream_buffer = ""
+        self._bullets_finalized = False
         self._set_status("thinking…", dot="dot_thinking")
 
     def _on_answer_delta(self, delta: str) -> None:
-        cursor = self.answer.textCursor()
+        self._stream_buffer += delta
+        self._route_stream(self._stream_buffer)
+
+    def _route_stream(self, text: str) -> None:
+        """Send the cumulative streamed text into the right pane(s).
+
+        For "bullets_then_full" style, we look for the "FULL ANSWER:" marker
+        the system prompt asks the model to emit, and split there. Until the
+        marker shows up, everything streams into the bullets pane. Once it
+        appears, the bullets stay put and new tokens land in the full pane.
+        """
+        style = getattr(self.settings, "style", "bullets_then_full")
+
+        if style == "bullets":
+            self._write_pane(self.bullets_pane, _strip_section_marker(text))
+            self._write_pane(self.answer_pane, "")
+            return
+        if style == "full":
+            self._write_pane(self.bullets_pane, "")
+            self._write_pane(self.answer_pane, _strip_section_marker(text))
+            return
+
+        # bullets_then_full
+        marker = "FULL ANSWER:"
+        idx = text.find(marker)
+        if idx == -1:
+            # Still streaming bullets — keep updating that pane.
+            self._write_pane(self.bullets_pane, _strip_section_marker(text))
+            self._write_pane(self.answer_pane, "")
+        else:
+            full = text[idx + len(marker):].lstrip()
+            if not self._bullets_finalized:
+                # Marker just appeared: write the final bullets text ONCE,
+                # then stop touching the pane so the user can scroll it.
+                bullets = _strip_section_marker(text[:idx])
+                self._write_pane(self.bullets_pane, bullets)
+                self._bullets_finalized = True
+            self._write_pane(self.answer_pane, full)
+
+    @staticmethod
+    def _write_pane(pane, text: str) -> None:
+        """Replace pane text and keep the cursor pinned at the end so the
+        view auto-scrolls as new tokens arrive."""
+        pane.setPlainText(text)
+        cursor = pane.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertText(delta)
-        self.answer.setTextCursor(cursor)
+        pane.setTextCursor(cursor)
 
     def _on_answer_done(self) -> None:
         if self._listening:
@@ -526,6 +633,7 @@ class OverlayWindow(QWidget):
             # if the whisper model changed, drop the cached model
             if new.whisper_model != self._transcriber.model_name:
                 self._transcriber = Transcriber(model_name=new.whisper_model)
+                self._transcriber.prewarm()
             self._refresh_devices()
             self._apply_visual_settings()
             self._apply_window_prefs()
@@ -534,7 +642,10 @@ class OverlayWindow(QWidget):
     # ---------- panes ----------
     def _clear_panes(self) -> None:
         self.transcript.clear()
-        self.answer.clear()
+        self.bullets_pane.clear()
+        self.answer_pane.clear()
+        self._stream_buffer = ""
+        self._bullets_finalized = False
 
     # ---------- cleanup ----------
     def quit_app(self) -> None:

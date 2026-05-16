@@ -29,7 +29,17 @@ SETTINGS_DIR = Path.home() / ".diycopilot"
 SETTINGS_PATH = SETTINGS_DIR / "settings.json"
 DEFAULT_FONT_SIZE = 15
 DEFAULT_WINDOW_WIDTH = 520
-DEFAULT_WINDOW_HEIGHT = 620
+DEFAULT_WINDOW_HEIGHT = 900
+
+# Text color presets shown in the dropdown. The hex is what's actually stored.
+TEXT_COLOR_PRESETS = [
+    ("#ffffff", "Pure white"),
+    ("#f3f4f6", "Soft white"),
+    ("#fef9c3", "Warm cream"),
+    ("#e0f2fe", "Soft cyan"),
+    ("#d1fae5", "Mint"),
+    ("#fde047", "Bright yellow"),
+]
 
 
 @dataclass
@@ -48,6 +58,9 @@ class Settings:
     window_width: int = DEFAULT_WINDOW_WIDTH
     window_height: int = DEFAULT_WINDOW_HEIGHT
     platform_mode: str = "auto"  # auto | macos | windows | linux
+    silence_ms: int = 700  # end-of-utterance silence threshold, milliseconds
+    whisper_prompt: str = ""  # initial-prompt bias for Whisper (names/jargon)
+    text_color: str = "#ffffff"  # main text color (transcript/bullets/answer)
 
     @classmethod
     def load(cls) -> "Settings":
@@ -197,6 +210,29 @@ class SettingsDialog(QDialog):
             self.whisper_combo.addItem(m)
         self.whisper_combo.setCurrentText(settings.whisper_model)
 
+        self.silence_slider = QSlider(Qt.Orientation.Horizontal)
+        self.silence_slider.setRange(300, 1500)
+        self.silence_slider.setSingleStep(50)
+        self.silence_slider.setValue(max(300, min(1500, settings.silence_ms)))
+        self.silence_value = QLabel(f"{self.silence_slider.value()} ms")
+        self.silence_value.setObjectName("opacityValue")
+        self.silence_slider.valueChanged.connect(
+            lambda v: self.silence_value.setText(f"{v} ms")
+        )
+        self._silence_row = QWidget()
+        _srl = QHBoxLayout(self._silence_row)
+        _srl.setContentsMargins(0, 0, 0, 0)
+        _srl.setSpacing(10)
+        _srl.addWidget(self.silence_slider, 1)
+        _srl.addWidget(self.silence_value)
+
+        self.whisper_prompt_edit = QPlainTextEdit(settings.whisper_prompt)
+        self.whisper_prompt_edit.setPlaceholderText(
+            "e.g. names of people, your company, products, technical jargon "
+            "the interviewer is likely to use…"
+        )
+        self.whisper_prompt_edit.setFixedHeight(70)
+
         self.style_combo = QComboBox()
         for label, value in (
             ("Bullets, then full answer", "bullets_then_full"),
@@ -271,9 +307,21 @@ class SettingsDialog(QDialog):
         _wwl.addWidget(self.window_width_slider, 1)
         _wwl.addWidget(self.window_width_value)
 
+        self.text_color_combo = QComboBox()
+        for hex_value, label in TEXT_COLOR_PRESETS:
+            self.text_color_combo.addItem(f"{label}  ({hex_value})", hex_value)
+        idx = self.text_color_combo.findData(settings.text_color)
+        if idx >= 0:
+            self.text_color_combo.setCurrentIndex(idx)
+        else:
+            # Custom color in settings — add it as an extra entry
+            self.text_color_combo.addItem(f"Custom  ({settings.text_color})",
+                                          settings.text_color)
+            self.text_color_combo.setCurrentIndex(self.text_color_combo.count() - 1)
+
         self.window_height_slider = QSlider(Qt.Orientation.Horizontal)
-        self.window_height_slider.setRange(480, 900)
-        self.window_height_slider.setValue(max(480, min(900, settings.window_height)))
+        self.window_height_slider.setRange(480, 1300)
+        self.window_height_slider.setValue(max(480, min(1300, settings.window_height)))
         self.window_height_value = QLabel(f"{self.window_height_slider.value()}px")
         self.window_height_value.setObjectName("opacityValue")
         self.window_height_slider.valueChanged.connect(
@@ -329,8 +377,22 @@ class SettingsDialog(QDialog):
         self._add_field(
             audio_card, "Whisper model",
             "Local speech-to-text. Bigger = more accurate but slower. "
-            "'base.en' is a good balance.",
+            "'base.en' is a good balance; 'small.en' is noticeably better "
+            "on names and accents.",
             self.whisper_combo,
+        )
+        self._add_field(
+            audio_card, "End-of-question pause",
+            "How long the interviewer needs to be silent before we treat the "
+            "question as finished. Lower = faster response, but may cut them "
+            "off mid-sentence.",
+            self._silence_row,
+        )
+        self._add_field(
+            audio_card, "Transcription hint",
+            "Words to bias Whisper toward — names of people, your company, "
+            "products, technical terms. Big wins for getting proper nouns right.",
+            self.whisper_prompt_edit,
         )
         cl.addWidget(audio_card)
 
@@ -368,9 +430,15 @@ class SettingsDialog(QDialog):
         )
         self._add_field(
             window_card, "Window opacity",
-            "Make the overlay see-through. Lower = more transparent — handy to "
-            "keep an eye on what's behind it.",
+            "Makes only the panel background see-through — text stays fully "
+            "opaque for readability. Lower = more transparent.",
             self._opacity_row,
+        )
+        self._add_field(
+            window_card, "Text color",
+            "Main color for the transcript, bullets and answer. Pure white "
+            "stays readable at every opacity level.",
+            self.text_color_combo,
         )
         self._add_field(
             window_card, "Font size",
@@ -465,4 +533,7 @@ class SettingsDialog(QDialog):
             window_width=self.window_width_slider.value(),
             window_height=self.window_height_slider.value(),
             platform_mode=self.platform_combo.currentData() or "auto",
+            silence_ms=self.silence_slider.value(),
+            whisper_prompt=self.whisper_prompt_edit.toPlainText().strip(),
+            text_color=self.text_color_combo.currentData() or "#ffffff",
         )

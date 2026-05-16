@@ -13,6 +13,10 @@ DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 CONNECT_TIMEOUT = 15
 READ_TIMEOUT = 90
 
+# A persistent Session keeps the TCP+TLS connection alive between calls, so
+# every question after the first skips the handshake (~100–300 ms saved).
+_SESSION = requests.Session()
+
 
 # Shared rule that teaches the model to pick the RIGHT kind of answer.
 _CLASSIFY_RULE = (
@@ -118,7 +122,7 @@ def stream_completion(
     }
 
     try:
-        with requests.post(
+        with _SESSION.post(
             url,
             headers=headers,
             json=payload,
