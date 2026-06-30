@@ -118,7 +118,7 @@ def stream_completion(
         "messages": messages,
         "stream": True,
         "temperature": 0.3,
-        "max_tokens": 700,
+        "max_tokens": 200,
     }
 
     try:

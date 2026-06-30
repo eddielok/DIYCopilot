@@ -173,7 +173,97 @@ DIALOG_STYLE = """
     }
     QSlider::handle:horizontal:hover { border: 1px solid #2563eb; }
     #opacityValue { font-size: 12px; color: #4b5563; font-weight: 600; }
+
+    /* segmented toggle */
+    QPushButton#toggleBtn {
+        background: #f0f2f5;
+        color: #4b5563;
+        border: 1px solid #d4d8df;
+        border-radius: 0;
+        padding: 7px 16px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+    QPushButton#toggleBtn:checked {
+        background: #2563eb;
+        color: #ffffff;
+        border-color: #2563eb;
+    }
+    QPushButton#toggleBtn:hover:!checked { background: #e5e8ed; }
+    QPushButton#toggleBtnFirst {
+        background: #f0f2f5;
+        color: #4b5563;
+        border: 1px solid #d4d8df;
+        border-top-left-radius: 7px;
+        border-bottom-left-radius: 7px;
+        border-right: none;
+        padding: 7px 16px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+    QPushButton#toggleBtnFirst:checked {
+        background: #2563eb;
+        color: #ffffff;
+        border-color: #2563eb;
+    }
+    QPushButton#toggleBtnFirst:hover:!checked { background: #e5e8ed; }
+    QPushButton#toggleBtnLast {
+        background: #f0f2f5;
+        color: #4b5563;
+        border: 1px solid #d4d8df;
+        border-top-right-radius: 7px;
+        border-bottom-right-radius: 7px;
+        padding: 7px 16px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+    QPushButton#toggleBtnLast:checked {
+        background: #2563eb;
+        color: #ffffff;
+        border-color: #2563eb;
+    }
+    QPushButton#toggleBtnLast:hover:!checked { background: #e5e8ed; }
 """
+
+
+class ToggleGroup(QWidget):
+    """Segmented toggle control — one active button at a time."""
+
+    def __init__(self, options: list[tuple[str, str]], current_value: str, parent=None):
+        super().__init__(parent)
+        self._buttons: list[tuple[str, QPushButton]] = []
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        n = len(options)
+        for i, (label, value) in enumerate(options):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            if i == 0:
+                btn.setObjectName("toggleBtnFirst")
+            elif i == n - 1:
+                btn.setObjectName("toggleBtnLast")
+            else:
+                btn.setObjectName("toggleBtn")
+            btn.clicked.connect(lambda _checked, v=value: self._select(v))
+            self._buttons.append((value, btn))
+            layout.addWidget(btn)
+
+        self._select(current_value)
+
+    def _select(self, selected: str) -> None:
+        for value, btn in self._buttons:
+            btn.setChecked(value == selected)
+
+    def setValue(self, value: str) -> None:
+        self._select(value)
+
+    def currentValue(self) -> str:
+        for value, btn in self._buttons:
+            if btn.isChecked():
+                return value
+        return self._buttons[0][0] if self._buttons else ""
 
 
 class SettingsDialog(QDialog):
@@ -233,16 +323,15 @@ class SettingsDialog(QDialog):
         )
         self.whisper_prompt_edit.setFixedHeight(70)
 
-        self.style_combo = QComboBox()
-        for label, value in (
-            ("Bullets, then full answer", "bullets_then_full"),
-            ("Bullets only", "bullets"),
-            ("Full scripted answer", "full"),
-        ):
-            self.style_combo.addItem(label, value)
-        idx = self.style_combo.findData(settings.style)
-        if idx >= 0:
-            self.style_combo.setCurrentIndex(idx)
+        # Normalise legacy "full" value to "bullets_then_full"
+        _style = settings.style if settings.style in ("bullets", "bullets_then_full") else "bullets_then_full"
+        self.style_toggle = ToggleGroup(
+            options=[
+                ("Bullets only", "bullets"),
+                ("Bullets + full answer", "bullets_then_full"),
+            ],
+            current_value=_style,
+        )
 
         self.resume_edit = QPlainTextEdit(settings.resume)
         self.resume_edit.setPlaceholderText("Paste your resume here…")
@@ -399,8 +488,8 @@ class SettingsDialog(QDialog):
         answer_card = self._card("ANSWERS")
         self._add_field(
             answer_card, "Answer style",
-            "How answers are formatted in the overlay.",
-            self.style_combo,
+            "Bullets only for a quick glance; Bullets + full answer for a complete scripted response.",
+            self.style_toggle,
         )
         self._add_field(
             answer_card, "Resume",
@@ -526,7 +615,7 @@ class SettingsDialog(QDialog):
             resume=self.resume_edit.toPlainText().strip(),
             job_description=self.jd_edit.toPlainText().strip(),
             hotkey=self._s.hotkey,
-            style=self.style_combo.currentData() or "bullets_then_full",
+            style=self.style_toggle.currentValue() or "bullets_then_full",
             always_on_top=self.aot_check.isChecked(),
             opacity=self.opacity_slider.value(),
             font_size=self.font_size_slider.value(),
