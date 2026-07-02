@@ -162,7 +162,7 @@ class OverlayWindow(QWidget):
         body.setObjectName("body")
         blay = QVBoxLayout(body)
         blay.setContentsMargins(12, 10, 12, 12)
-        blay.setSpacing(8)
+        blay.setSpacing(2)
 
         # Source row
         src_row = QHBoxLayout()
@@ -182,6 +182,7 @@ class OverlayWindow(QWidget):
         # Question label
         q_label = QLabel("Question")
         q_label.setObjectName("section")
+        q_label.setFixedHeight(16)
         blay.addWidget(q_label)
         self.transcript = QTextEdit()
         self.transcript.setReadOnly(True)
@@ -191,6 +192,7 @@ class OverlayWindow(QWidget):
         # Bullets pane — short, easy-to-glance points to rephrase live
         b_label = QLabel("Bullets")
         b_label.setObjectName("section")
+        b_label.setFixedHeight(16)
         blay.addWidget(b_label)
         self.bullets_pane = QTextEdit()
         self.bullets_pane.setReadOnly(False)
@@ -198,14 +200,55 @@ class OverlayWindow(QWidget):
         self.bullets_pane.setFixedHeight(210)
         blay.addWidget(self.bullets_pane)
 
-        # Full answer pane — the longer scripted answer underneath
+        # History pane — accumulates previous bullet answers
+        h_row = QHBoxLayout()
+        h_row.setSpacing(6)
+        h_label = QLabel("History")
+        h_label.setObjectName("section")
+        h_label.setFixedHeight(16)
+        h_row.addWidget(h_label)
+        h_row.addStretch(1)
+        self.toggle_history_btn = QPushButton("Hide")
+        self.toggle_history_btn.setObjectName("ghostbtn")
+        self.toggle_history_btn.setFixedWidth(46)
+        self.toggle_history_btn.clicked.connect(self._toggle_history_pane)
+        h_row.addWidget(self.toggle_history_btn)
+        blay.addLayout(h_row)
+        self.history_pane = QTextEdit()
+        self.history_pane.setReadOnly(True)
+        self.history_pane.setObjectName("bullets")
+        self.history_pane.setFixedHeight(180)
+        _hsp = self.history_pane.sizePolicy()
+        _hsp.setRetainSizeWhenHidden(True)
+        self.history_pane.setSizePolicy(_hsp)
+        self.history_pane.setVisible(True)
+        blay.addWidget(self.history_pane)
+
+        # Full answer section — toggle button collapses the entire section
+        a_toggle_row = QHBoxLayout()
+        a_toggle_row.setSpacing(6)
+        self.toggle_answer_btn = QPushButton("Full Answer ▶")
+        self.toggle_answer_btn.setObjectName("ghostbtn")
+        self.toggle_answer_btn.clicked.connect(self._toggle_answer_pane)
+        a_toggle_row.addWidget(self.toggle_answer_btn)
+        a_toggle_row.addStretch(1)
+        blay.addLayout(a_toggle_row)
+
+        # Container so label + pane collapse together
+        self.answer_section = QWidget()
+        a_sec_lay = QVBoxLayout(self.answer_section)
+        a_sec_lay.setContentsMargins(0, 0, 0, 0)
+        a_sec_lay.setSpacing(4)
         a_label = QLabel("Full Answer")
         a_label.setObjectName("section")
-        blay.addWidget(a_label)
+        a_label.setFixedHeight(16)
+        a_sec_lay.addWidget(a_label)
         self.answer_pane = QTextEdit()
         self.answer_pane.setReadOnly(False)  # let user copy/edit
         self.answer_pane.setObjectName("answer")
-        blay.addWidget(self.answer_pane, 1)
+        a_sec_lay.addWidget(self.answer_pane, 1)
+        self.answer_section.setVisible(False)
+        blay.addWidget(self.answer_section, 1)
 
         # Back-compat alias so existing code that writes to self.answer (e.g.
         # error / model-missing messages) lands in the main answer pane.
@@ -277,7 +320,7 @@ class OverlayWindow(QWidget):
             QLabel {{ color: {text_color}; font-size: {base_label_size}px; }}
             #title {{ font-weight: 600; }}
             #section {{ color: #9aa0a6; font-size: {section_size}px; text-transform: uppercase;
-                       letter-spacing: 0.6px; margin-top: 2px; }}
+                       letter-spacing: 0.6px; margin: 0px; padding: 0px; }}
             #dot_idle {{ color: #5f6368; font-size: 14px; }}
             #dot_listening {{ color: #34d399; font-size: 14px; }}
             #dot_thinking {{ color: #fbbf24; font-size: 14px; }}
@@ -537,6 +580,13 @@ class OverlayWindow(QWidget):
         self.transcript.setPlainText(text)
 
     def _on_answer_started(self) -> None:
+        # Save current bullets to history before clearing
+        prev = self.bullets_pane.toPlainText().strip()
+        if prev:
+            existing = self.history_pane.toPlainText()
+            separator = "─" * 30
+            entry = f"{prev}\n{separator}\n"
+            self.history_pane.setPlainText(entry + existing if existing else entry.rstrip())
         self.bullets_pane.clear()
         self.answer_pane.clear()
         self._stream_buffer = ""
@@ -640,10 +690,21 @@ class OverlayWindow(QWidget):
             QMessageBox.information(self, "Saved", "Settings saved.")
 
     # ---------- panes ----------
+    def _toggle_answer_pane(self) -> None:
+        visible = self.answer_section.isVisible()
+        self.answer_section.setVisible(not visible)
+        self.toggle_answer_btn.setText("Full Answer ▶" if not visible else "Full Answer ▼")
+
+    def _toggle_history_pane(self) -> None:
+        visible = self.history_pane.isVisible()
+        self.history_pane.setVisible(not visible)
+        self.toggle_history_btn.setText("Show" if visible else "Hide")
+
     def _clear_panes(self) -> None:
         self.transcript.clear()
         self.bullets_pane.clear()
         self.answer_pane.clear()
+        self.history_pane.clear()
         self._stream_buffer = ""
         self._bullets_finalized = False
 
