@@ -70,7 +70,7 @@ class Bridge(QObject):
 
 
 class OverlayWindow(QWidget):
-    HEADER_HEIGHT = 32
+    HEADER_HEIGHT = 26
 
     def __init__(self, settings: Settings):
         super().__init__()
@@ -109,8 +109,7 @@ class OverlayWindow(QWidget):
         self._apply_window_prefs()
 
         # In-app shortcut to toggle listening (cmd+shift+space)
-        QShortcut(QKeySequence("Ctrl+Shift+Space"), self, activated=self.toggle_listening)
-        QShortcut(QKeySequence("Meta+Shift+Space"), self, activated=self.toggle_listening)
+        QShortcut(QKeySequence("Ctrl+Space"), self, activated=self.toggle_listening)
         self.space_shortcut = QShortcut(QKeySequence("Space"), self, activated=self.toggle_listening)
         self.space_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.space_shortcut.setAutoRepeat(False)
@@ -161,8 +160,8 @@ class OverlayWindow(QWidget):
         body = QWidget(self)
         body.setObjectName("body")
         blay = QVBoxLayout(body)
-        blay.setContentsMargins(12, 10, 12, 12)
-        blay.setSpacing(2)
+        blay.setContentsMargins(8, 4, 8, 4)
+        blay.setSpacing(0)
 
         # Source row
         src_row = QHBoxLayout()
@@ -179,50 +178,35 @@ class OverlayWindow(QWidget):
         src_row.addWidget(self.listen_btn)
         blay.addLayout(src_row)
 
-        # Question label
-        q_label = QLabel("Question")
-        q_label.setObjectName("section")
-        q_label.setFixedHeight(16)
-        blay.addWidget(q_label)
         self.transcript = QTextEdit()
         self.transcript.setReadOnly(True)
         self.transcript.setObjectName("transcript")
+        self.transcript.setPlaceholderText("QUESTION")
         blay.addWidget(self.transcript)
 
-        # Bullets pane — short, easy-to-glance points to rephrase live
-        b_label = QLabel("Bullets")
-        b_label.setObjectName("section")
-        b_label.setFixedHeight(16)
-        blay.addWidget(b_label)
         self.bullets_pane = QTextEdit()
         self.bullets_pane.setReadOnly(False)
         self.bullets_pane.setObjectName("bullets")
+        self.bullets_pane.setPlaceholderText("BULLETS")
         self.bullets_pane.setFixedHeight(210)
         blay.addWidget(self.bullets_pane)
 
         # History pane — accumulates previous bullet answers
-        h_row = QHBoxLayout()
-        h_row.setSpacing(6)
-        h_label = QLabel("History")
-        h_label.setObjectName("section")
-        h_label.setFixedHeight(16)
-        h_row.addWidget(h_label)
-        h_row.addStretch(1)
-        self.toggle_history_btn = QPushButton("Hide")
-        self.toggle_history_btn.setObjectName("ghostbtn")
-        self.toggle_history_btn.setFixedWidth(46)
-        self.toggle_history_btn.clicked.connect(self._toggle_history_pane)
-        h_row.addWidget(self.toggle_history_btn)
-        blay.addLayout(h_row)
         self.history_pane = QTextEdit()
         self.history_pane.setReadOnly(True)
         self.history_pane.setObjectName("bullets")
         self.history_pane.setFixedHeight(180)
-        _hsp = self.history_pane.sizePolicy()
-        _hsp.setRetainSizeWhenHidden(True)
-        self.history_pane.setSizePolicy(_hsp)
         self.history_pane.setVisible(True)
         blay.addWidget(self.history_pane)
+        h_row = QHBoxLayout()
+        h_row.setSpacing(6)
+        h_row.addStretch(1)
+        self.toggle_history_btn = QPushButton("History ▴")
+        self.toggle_history_btn.setObjectName("ghostbtn")
+        self.toggle_history_btn.setFixedWidth(74)
+        self.toggle_history_btn.clicked.connect(self._toggle_history_pane)
+        h_row.addWidget(self.toggle_history_btn)
+        blay.addLayout(h_row)
 
         # Full answer section — toggle button collapses the entire section
         a_toggle_row = QHBoxLayout()
@@ -238,10 +222,10 @@ class OverlayWindow(QWidget):
         self.answer_section = QWidget()
         a_sec_lay = QVBoxLayout(self.answer_section)
         a_sec_lay.setContentsMargins(0, 0, 0, 0)
-        a_sec_lay.setSpacing(4)
+        a_sec_lay.setSpacing(2)
         a_label = QLabel("Full Answer")
         a_label.setObjectName("section")
-        a_label.setFixedHeight(16)
+        a_label.setFixedHeight(12)
         a_sec_lay.addWidget(a_label)
         self.answer_pane = QTextEdit()
         self.answer_pane.setReadOnly(False)  # let user copy/edit
@@ -286,8 +270,8 @@ class OverlayWindow(QWidget):
         width, height = self._overlay_dimensions()
         base_label_size = max(12, font_size - 2)
         section_size = max(11, font_size - 3)
-        combo_height = max(22, font_size + 11)
-        transcript_height = max(90, font_size * 7)
+        combo_height = max(20, font_size + 8)
+        transcript_height = max(70, font_size * 5)
 
         # Opacity affects ONLY panel backgrounds — text stays fully opaque.
         # opacity_pct in [40..100]; scale the original panel alphas by it.
@@ -331,8 +315,9 @@ class OverlayWindow(QWidget):
                 border: 1px solid rgba(255,255,255,0.07);
                 border-radius: 8px;
                 font-size: {font_size}px;
-                padding: 8px;
+                padding: 2px 5px;
             }}
+            QTextEdit[placeholderText] {{ color: #9aa0a6; }}
             QTextEdit#answer {{ font-size: {font_size}px; line-height: 1.5; }}
             QTextEdit#bullets {{
                 background: rgba(37, 99, 235, {bullets_blue_alpha:.3f});
@@ -347,7 +332,7 @@ class OverlayWindow(QWidget):
                 color: #f3f4f6;
                 border: 1px solid rgba(255,255,255,0.12);
                 border-radius: 6px;
-                padding: 4px 8px;
+                padding: 2px 8px;
                 min-height: {combo_height}px;
             }}
             QComboBox:hover {{ border: 1px solid rgba(255,255,255,0.25); }}
@@ -373,7 +358,7 @@ class OverlayWindow(QWidget):
             }}
             QPushButton#listen {{
                 background: #2563eb; color: white; border: none;
-                border-radius: 6px; padding: 6px 16px; font-weight: 600;
+                border-radius: 6px; padding: 3px 14px; font-weight: 600;
             }}
             QPushButton#listen:checked {{ background: #dc2626; }}
             QPushButton#iconbtn {{
@@ -384,13 +369,13 @@ class OverlayWindow(QWidget):
             QPushButton#quit {{
                 background: rgba(220,38,38,0.18); color: #fca5a5;
                 border: 1px solid rgba(220,38,38,0.45);
-                border-radius: 6px; padding: 4px 16px; font-weight: 600;
+                border-radius: 6px; padding: 2px 14px; font-weight: 600;
             }}
             QPushButton#quit:hover {{ background: #dc2626; color: white; }}
             QPushButton#ghostbtn {{
                 background: transparent; color: #9aa0a6;
                 border: 1px solid rgba(255,255,255,0.12);
-                border-radius: 6px; padding: 4px 12px;
+                border-radius: 6px; padding: 2px 10px;
             }}
             QPushButton#ghostbtn:hover {{ color: #f3f4f6; border-color: rgba(255,255,255,0.3); }}
             """
@@ -698,7 +683,7 @@ class OverlayWindow(QWidget):
     def _toggle_history_pane(self) -> None:
         visible = self.history_pane.isVisible()
         self.history_pane.setVisible(not visible)
-        self.toggle_history_btn.setText("Show" if visible else "Hide")
+        self.toggle_history_btn.setText("History ▾" if visible else "History ▴")
 
     def _clear_panes(self) -> None:
         self.transcript.clear()
